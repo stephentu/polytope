@@ -50,6 +50,12 @@ try:
 except ImportError:
     logger.info('MOSEK solver not found.')
 
+try:
+    import cvxpy
+    installed_solvers.add('cvxpy')
+except ImportError:
+    logger.info('cvxpy solver not found.')
+
 
 # choose default from installed choices
 if 'glpk' in installed_solvers:
@@ -88,6 +94,8 @@ def lpsolve(c, G, h, solver=None):
         result = _solve_lp_using_cvxopt(c, G, h, solver=solver)
     elif solver == 'scipy':
         result = _solve_lp_using_scipy(c, G, h)
+    elif solver == 'cvxpy':
+        result = _solve_lp_using_cvxpy(c, G, h)
     else:
         raise Exception(
             'unknown LP solver "{s}".'.format(s=default_solver))
@@ -143,6 +151,30 @@ def _solve_lp_using_scipy(c, G, h):
         status=sol.status,
         x=sol.x,
         fun=sol.fun)
+
+
+def _solve_lp_using_cvxpy(c, G, h):
+    _assert_have_solver('cvxpy')
+
+    assert len(c.shape) == 1, "c.shape={}".format(c.shape)
+    assert len(G.shape) == 2, "G.shape={}".format(G.shape)
+    assert len(h.shape) == 1, "h.shape={}".format(h.shape)
+
+    x = cvxpy.Variable(c.shape[0], name="c")
+    prob = cvxpy.Problem(cvxpy.Minimize(c * x), [G*x <= h])
+    prob.solve()
+    result = dict()
+    result['x'] = None
+    result['fun'] = None
+    if prob.status == cvxpy.OPTIMAL:
+        result['status'] = 0
+        result['x'] = np.array(x.value)
+        result['fun'] = prob.value
+    elif prob.status == cvxpy.INFEASIBLE:
+        result['status'] = 2
+    else:
+        result['status'] = 4
+    return result
 
 
 def _assert_have_solver(solver):
